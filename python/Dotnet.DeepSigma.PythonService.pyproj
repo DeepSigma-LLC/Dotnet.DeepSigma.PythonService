@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{352a1e29-8068-4eca-8361-ef481f129d07}</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>server.py</StartupFile>
+    <SearchPath>src</SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <InterpreterId />
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'" />
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'" />
+  <PropertyGroup>
+    <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
+    <_PythonToolsTargets>$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets</_PythonToolsTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="server.py" />
+    <Compile Include="src\deepsigma_pyservice\__init__.py" />
+    <Compile Include="src\deepsigma_pyservice\app_factory.py" />
+    <Compile Include="src\deepsigma_pyservice\settings.py" />
+    <Compile Include="src\deepsigma_pyservice\routers\__init__.py" />
+    <Compile Include="src\deepsigma_pyservice\routers\health.py" />
+    <Compile Include="implementations\__init__.py" />
+    <Compile Include="implementations\echo.py" />
+    <Compile Include="implementations\ml_iris.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="src\" />
+    <Folder Include="src\deepsigma_pyservice\" />
+    <Folder Include="src\deepsigma_pyservice\routers\" />
+    <Folder Include="implementations\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="pyproject.toml" />
+    <Content Include="requirements.txt" />
+  </ItemGroup>
+  <Import Project="$(_PythonToolsTargets)" Condition="Exists('$(_PythonToolsTargets)')" />
+  <Target Name="Restore" Condition="!Exists('$(_PythonToolsTargets)')" />
+  <Target Name="Build" Condition="!Exists('$(_PythonToolsTargets)')" />
+  <Target Name="Clean" Condition="!Exists('$(_PythonToolsTargets)')" />
+  <Target Name="Rebuild" Condition="!Exists('$(_PythonToolsTargets)')" />
+</Project>

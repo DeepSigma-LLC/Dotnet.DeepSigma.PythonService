@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="DeepSigma.PythonService.Client.csproj" />
+  </Folder>
+  <Folder Name="/python/">
+    <Project Path="../python/Dotnet.DeepSigma.PythonService.pyproj" Type="888888a0-9f3d-457c-b088-3a5042f75d52" Id="352a1e29-8068-4eca-8361-ef481f129d07" />
+  </Folder>
+  <Folder Name="/apphost/">
+    <Project Path="../DeepSigma.PythonService.AppHost/DeepSigma.PythonService.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/demo/">
+    <Project Path="../DeepSigma.PythonService.Demo/DeepSigma.PythonService.Demo.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="../DeepSigma.PythonService.Test/DeepSigma.PythonService.Test.csproj" />
+  </Folder>
+</Solution>
