@@ -1,5 +1,6 @@
 using DeepSigma.DataAccess.Http;
 using DeepSigma.PythonService;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 // ReSharper disable once CheckNamespace -- intentional, surfaces wherever DI is in scope.
@@ -8,25 +9,31 @@ namespace Microsoft.Extensions.DependencyInjection;
 public static class PythonServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers <see cref="PythonServiceOptions"/>, the underlying <see cref="HttpApi"/>
-    /// (with its <c>BaseAddress</c> set to the configured Python service URL), and
-    /// <typeparamref name="TClient"/> as a transient client deriving from
-    /// <see cref="PythonServiceClient"/>.
+    /// Configures <see cref="PythonServiceOptions"/> and registers <see cref="HttpApi"/> with its
+    /// <c>BaseAddress</c> bound to <see cref="PythonServiceOptions.BaseUrl"/> and JSON options set to
+    /// <see cref="HttpApi.SnakeCaseJsonOptions"/> (Python services use snake_case fields). Call
+    /// <see cref="IPythonServiceBuilder.AddClient{TClient}"/> on the returned builder to register
+    /// each <see cref="PythonServiceClient"/>-derived client that should share this configuration.
     /// </summary>
-    public static IHttpClientBuilder AddPythonServiceClient<TClient>(
+    public static IPythonServiceBuilder AddPythonService(
         this IServiceCollection services,
         Action<PythonServiceOptions> configure)
-        where TClient : PythonServiceClient
     {
         services.Configure(configure);
 
-        IHttpClientBuilder builder = services.AddHttpClient<HttpApi>((sp, client) =>
+        IHttpClientBuilder httpClientBuilder = services.AddHttpClient(nameof(HttpApi), (sp, client) =>
         {
             PythonServiceOptions options = sp.GetRequiredService<IOptions<PythonServiceOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl);
         });
 
-        services.AddTransient<TClient>();
-        return builder;
+        services.AddTransient(sp =>
+        {
+            HttpClient http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpApi));
+            ILogger<HttpApi>? logger = sp.GetService<ILogger<HttpApi>>();
+            return new HttpApi(http, logger, HttpApi.SnakeCaseJsonOptions);
+        });
+
+        return new PythonServiceBuilder(services, httpClientBuilder);
     }
 }

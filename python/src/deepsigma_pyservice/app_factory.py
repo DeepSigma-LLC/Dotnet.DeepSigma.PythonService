@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from deepsigma_pyservice.routers.health import router as health_router
+from deepsigma_pyservice.routers.health import build_health_router
 from deepsigma_pyservice.settings import AppSettings
 
 
@@ -22,7 +22,7 @@ def create_app(
             allow_headers=["*"],
         )
 
-    app.include_router(health_router)
+    app.include_router(build_health_router(settings))
     for router in routers or ():
         app.include_router(router)
 

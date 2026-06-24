@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DeepSigma.PythonService.Demo\DeepSigma.PythonService.Demo.csproj" />
+    <ProjectReference Include="..\DeepSigma.PythonService\DeepSigma.PythonService.Client.csproj" IsAspireProjectResource="false" />
   </ItemGroup>
 
 </Project>

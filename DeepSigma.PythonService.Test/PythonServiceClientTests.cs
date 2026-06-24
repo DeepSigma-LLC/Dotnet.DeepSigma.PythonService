@@ -49,33 +49,60 @@ public sealed class PythonServiceClientTests
         Assert.NotNull(result);
         Assert.Equal(42, result!.Id);
         Assert.Equal("widget", result.Name);
-        Assert.Contains("\"name\":\"widget\"", capturedBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"Name\":\"widget\"", capturedBody, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void BaseUrlIsAppliedToHttpClient()
     {
         var handler = new StubHandler((_, _) => Json("{}"));
-        ServiceProvider sp = BuildProvider<WidgetClient>(handler, "http://configured.example.com:9999");
+        ServiceProvider sp = BuildProvider(handler, "http://configured.example.com:9999", b => b.AddClient<WidgetClient>());
 
         HttpApi httpApi = sp.GetRequiredService<HttpApi>();
-        var http = (HttpClient)typeof(HttpApi).GetField("_http", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(httpApi)!;
+        HttpClient http = HttpClientOf(httpApi);
 
         Assert.Equal(new Uri("http://configured.example.com:9999"), http.BaseAddress);
     }
 
+    [Fact]
+    public void MultipleClients_ShareSameHttpApiInstanceAndBaseAddress()
+    {
+        var handler = new StubHandler((_, _) => Json("{}"));
+        ServiceProvider sp = BuildProvider(handler, "http://shared.local",
+            b => b.AddClient<WidgetClient>().AddClient<HealthClient>());
+
+        var w = sp.GetRequiredService<WidgetClient>();
+        var h = sp.GetRequiredService<HealthClient>();
+
+        HttpClient wHttp = HttpClientOf(HttpApiOf(w));
+        HttpClient hHttp = HttpClientOf(HttpApiOf(h));
+
+        Assert.Equal(new Uri("http://shared.local"), wHttp.BaseAddress);
+        Assert.Equal(new Uri("http://shared.local"), hHttp.BaseAddress);
+    }
+
     private static TClient BuildClient<TClient>(StubHandler handler, string baseUrl)
         where TClient : PythonServiceClient
-        => BuildProvider<TClient>(handler, baseUrl).GetRequiredService<TClient>();
+        => BuildProvider(handler, baseUrl, b => b.AddClient<TClient>()).GetRequiredService<TClient>();
 
-    private static ServiceProvider BuildProvider<TClient>(StubHandler handler, string baseUrl)
-        where TClient : PythonServiceClient
+    private static ServiceProvider BuildProvider(StubHandler handler, string baseUrl, Action<IPythonServiceBuilder> configure)
     {
         var services = new ServiceCollection();
-        services.AddPythonServiceClient<TClient>(opts => opts.BaseUrl = baseUrl)
-                .ConfigurePrimaryHttpMessageHandler(() => handler);
+        IPythonServiceBuilder builder = services.AddPythonService(opts => opts.BaseUrl = baseUrl);
+        builder.HttpClientBuilder.ConfigurePrimaryHttpMessageHandler(() => handler);
+        configure(builder);
         return services.BuildServiceProvider();
     }
+
+    private static HttpApi HttpApiOf(PythonServiceClient client)
+        => (HttpApi)typeof(PythonServiceClient)
+            .GetProperty("Http", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(client)!;
+
+    private static HttpClient HttpClientOf(HttpApi api)
+        => (HttpClient)typeof(HttpApi)
+            .GetField("_http", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(api)!;
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)
     {
@@ -98,6 +125,6 @@ public sealed class PythonServiceClientTests
         : PythonServiceClient(http, options)
     {
         public Task<WidgetResponse?> CreateAsync(WidgetRequest request, CancellationToken ct = default)
-            => Http.PostJsonAsync<WidgetRequest, WidgetResponse>("/widgets", request, cancellationToken: ct);
+            => PostAsync<WidgetRequest, WidgetResponse>("/widgets", request, ct);
     }
 }

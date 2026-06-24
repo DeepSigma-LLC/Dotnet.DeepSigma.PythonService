@@ -6,13 +6,15 @@ using Microsoft.Extensions.Hosting;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-string baseUrl = builder.Configuration["services:python-api:http:0"]
+string baseUrl = builder.Configuration[PythonApiResource.ConfigKey]
                  ?? builder.Configuration["PythonService:BaseUrl"]
                  ?? "http://127.0.0.1:8000";
 
-builder.Services.AddPythonServiceClient<DemoEchoClient>(opts => opts.BaseUrl = baseUrl);
-builder.Services.AddPythonServiceClient<DemoIrisClient>(opts => opts.BaseUrl = baseUrl);
-builder.Services.AddPythonServiceClient<HealthClient>(opts => opts.BaseUrl = baseUrl);
+builder.Services
+    .AddPythonService(opts => opts.BaseUrl = baseUrl)
+    .AddClient<HealthClient>()
+    .AddClient<DemoEchoClient>()
+    .AddClient<DemoIrisClient>();
 
 using IHost host = builder.Build();
 

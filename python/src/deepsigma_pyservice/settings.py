@@ -9,3 +9,4 @@ class AppSettings(BaseSettings):
     log_level: str = "info"
     cors_origins: list[str] = []
     title: str = "DeepSigma Python Service"
+    service_name: str = "deepsigma-pyservice"

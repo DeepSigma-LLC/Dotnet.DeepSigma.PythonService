@@ -1,7 +1,9 @@
+using DeepSigma.PythonService;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var pythonApi = builder.AddUvicornApp(
-        name: "python-api",
+        name: PythonApiResource.Name,
         appDirectory: "../python",
         app: "server:app")
     .WithHttpHealthCheck("/health")

@@ -8,8 +8,5 @@ public sealed class HealthClient(HttpApi http, IOptions<PythonServiceOptions> op
     : PythonServiceClient(http, options)
 {
     public Task<HealthResponse?> GetHealthAsync(CancellationToken cancellationToken = default)
-        => Http.GetDataFromUrlAsync<HealthResponse>(
-            "/health",
-            timeoutInSeconds: Options.RequestTimeoutSeconds,
-            cancellationToken: cancellationToken);
+        => GetAsync<HealthResponse>("/health", cancellationToken);
 }

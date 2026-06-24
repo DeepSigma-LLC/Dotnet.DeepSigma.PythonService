@@ -9,9 +9,5 @@ public sealed class DemoEchoClient(HttpApi http, IOptions<PythonServiceOptions> 
     : PythonServiceClient(http, options)
 {
     public Task<EchoResponse?> EchoAsync(EchoRequest request, CancellationToken cancellationToken = default)
-        => Http.PostJsonAsync<EchoRequest, EchoResponse>(
-            "/echo",
-            request,
-            timeoutInSeconds: Options.RequestTimeoutSeconds,
-            cancellationToken: cancellationToken);
+        => PostAsync<EchoRequest, EchoResponse>("/echo", request, cancellationToken);
 }

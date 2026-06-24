@@ -14,11 +14,13 @@ The project ships:
 ```
 Dotnet.DeepSigma.PythonService/
 ├── DeepSigma.PythonService/             # Reusable .NET client library (NuGet target)
-│   ├── PythonServiceClient.cs           # Abstract base for derived typed clients
+│   ├── PythonServiceClient.cs           # Abstract base + PostAsync/GetAsync helpers
 │   ├── PythonServiceOptions.cs          # BaseUrl + timeout
+│   ├── PythonServiceBuilder.cs          # IPythonServiceBuilder + AddClient<T>
 │   ├── HealthClient.cs                  # Built-in /health client
+│   ├── PythonApiResource.cs             # Aspire resource-name + config-key constants
 │   ├── Models/HealthResponse.cs
-│   ├── ServiceCollectionExtensions.cs   # AddPythonServiceClient<TClient>(...)
+│   ├── ServiceCollectionExtensions.cs   # AddPythonService(...).AddClient<T>()
 │   └── DeepSigma.PythonService.slnx     # Visual Studio solution
 │
 ├── DeepSigma.PythonService.Demo/        # Example consumer
@@ -39,11 +41,12 @@ Dotnet.DeepSigma.PythonService/
     ├── server.py                        # Entrypoint: wires routers -> create_app
     ├── src/deepsigma_pyservice/         # REUSABLE FRAMEWORK PACKAGE
     │   ├── app_factory.py               # create_app(routers, settings)
-    │   ├── settings.py                  # AppSettings
+    │   ├── settings.py                  # AppSettings (host, port, service_name, ...)
     │   └── routers/health.py            # Built-in /health
-    └── implementations/                 # SWAPPABLE — one APIRouter per file
-        ├── echo.py
-        └── ml_iris.py
+    ├── implementations/                 # SWAPPABLE — one APIRouter per file
+    │   ├── echo.py
+    │   └── ml_iris.py
+    └── tests/                           # pytest + FastAPI TestClient
 ```
 
 ## Design rules
@@ -51,7 +54,8 @@ Dotnet.DeepSigma.PythonService/
 The framework layers (`deepsigma_pyservice/` on Python, `DeepSigma.PythonService/` on .NET) impose **zero domain shape**. Anything ML-, predict-, or inference-specific lives in `implementations/` or in the Demo project. If a name in either framework references a specific function ("Predict", "Inference"), it doesn't belong there.
 
 - **Python framework** deals only in `APIRouter`s — no protocols, no `predict()` contracts. An implementation is just a module that exposes an `APIRouter` with whatever endpoints and Pydantic models it wants.
-- **.NET client library** ships an abstract base class plus DI plumbing. It does **not** wrap or re-expose HTTP verbs — the underlying `DeepSigma.DataAccess.Http.HttpApi` (v1.3.0+) already provides `PostJsonAsync`, `GetDataFromUrlAsync`, `PutJsonAsync`, `PatchJsonAsync`, `DeleteAsync`, plus a `SendAsync` escape hatch. Derived clients call those directly.
+- **.NET client library** ships an abstract base class with thin `PostAsync<TReq,TResp>` / `GetAsync<T>` helpers that bake in the configured timeout. The underlying `DeepSigma.DataAccess.Http.HttpApi` (v1.4.0+) — `PutJsonAsync`, `PatchJsonAsync`, `DeleteAsync`, `SendAsync` (escape hatch) — is exposed as `protected Http { get; }` for cases the two helpers don't cover.
+- **Snake_case JSON is automatic.** The library wires `HttpApi.SnakeCaseJsonOptions` so PascalCase C# property names round-trip to/from Python's snake_case fields with no `[JsonPropertyName]` attributes on DTOs.
 - **Aspire** lives only in the AppHost project. The reusable client library has zero Aspire references, so consumers can host the Python server however they want.
 
 ## Getting started
@@ -95,7 +99,11 @@ dotnet run --project DeepSigma.PythonService.Demo
 # Aspire (CLI)
 dotnet run --project DeepSigma.PythonService.AppHost
 
-# Tests
+# Python tests
+cd python
+.venv\Scripts\python.exe -m pytest
+
+# .NET tests
 dotnet test DeepSigma.PythonService.Test
 ```
 
@@ -146,22 +154,21 @@ public sealed class DemoDocumentsClient(HttpApi http, IOptions<PythonServiceOpti
     : PythonServiceClient(http, opts)
 {
     public Task<SummarizeResponse?> SummarizeAsync(SummarizeRequest req, CancellationToken ct = default)
-        => Http.PostJsonAsync<SummarizeRequest, SummarizeResponse>(
-            "/documents/summarize", req, cancellationToken: ct);
+        => PostAsync<SummarizeRequest, SummarizeResponse>("/documents/summarize", req, ct);
 }
+
+public sealed record SummarizeRequest(string Text);
+public sealed record SummarizeResponse(string Summary);
 ```
 
-DTOs need `[JsonPropertyName]` for snake_case matching:
-
-```csharp
-public sealed record SummarizeRequest([property: JsonPropertyName("text")] string Text);
-public sealed record SummarizeResponse([property: JsonPropertyName("summary")] string Summary);
-```
+PascalCase property names round-trip to Python's snake_case fields automatically — no attributes needed.
 
 ### 4. Register in DI
 
 ```csharp
-builder.Services.AddPythonServiceClient<DemoDocumentsClient>(opts => opts.BaseUrl = baseUrl);
+builder.Services
+    .AddPythonService(opts => opts.BaseUrl = baseUrl)
+    .AddClient<DemoDocumentsClient>();
 ```
 
 No edits to `deepsigma_pyservice/` or `DeepSigma.PythonService.Client`.
@@ -179,39 +186,48 @@ public sealed class MyClient(HttpApi http, IOptions<PythonServiceOptions> option
     : PythonServiceClient(http, options)
 {
     public Task<MyResponse?> DoThingAsync(MyRequest req, CancellationToken ct = default)
-        => Http.PostJsonAsync<MyRequest, MyResponse>("/my/endpoint", req, cancellationToken: ct);
+        => PostAsync<MyRequest, MyResponse>("/my/endpoint", req, ct);
 }
 
 // Program.cs
-services.AddPythonServiceClient<MyClient>(opts =>
-{
-    opts.BaseUrl = "http://your-python-host:8000";
-    opts.RequestTimeoutSeconds = 30;
-});
+services
+    .AddPythonService(opts =>
+    {
+        opts.BaseUrl = "http://your-python-host:8000";
+        opts.RequestTimeoutSeconds = 30;
+    })
+    .AddClient<MyClient>();
 ```
 
-Configuring the underlying transport (retry, throttle, custom handlers) uses the `IHttpClientBuilder` returned by `AddPythonServiceClient`:
+Multiple derived clients registered through the same `AddPythonService(...).AddClient<...>()` chain share one configured `HttpApi` — base URL, timeout, retry policies, and JSON options are configured once.
+
+Configuring the underlying transport (retry, throttle, custom handlers) uses the `IHttpClientBuilder` exposed on the builder:
 
 ```csharp
-services.AddPythonServiceClient<MyClient>(opts => opts.BaseUrl = "...")
-        .AddRetryAfterPolicy()
-        .AddMinIntervalThrottle(TimeSpan.FromMilliseconds(100));
+var pyBuilder = services.AddPythonService(opts => opts.BaseUrl = "...");
+pyBuilder.HttpClientBuilder
+    .AddRetryAfterPolicy()
+    .AddMinIntervalThrottle(TimeSpan.FromMilliseconds(100));
+pyBuilder.AddClient<MyClient>();
 ```
 
 ## JSON conventions
 
-Pydantic uses `snake_case` field names by default; `System.Text.Json` uses `PascalCase`. Bridge with `[JsonPropertyName]` on each DTO record property — see the examples above. This is verbose but explicit; the alternative (configuring a `JsonNamingPolicy.SnakeCaseLower` on the underlying serializer) lives in the `DeepSigma.DataAccess.Http` package.
+Pydantic uses `snake_case` field names by default; `System.Text.Json` uses `PascalCase`. The library wires `HttpApi.SnakeCaseJsonOptions` (from `DeepSigma.DataAccess.Http` v1.4.0+) so PascalCase C# properties serialize as snake_case on the wire and are read case-insensitively — no `[JsonPropertyName]` attributes required on DTOs.
+
+If you need a different policy for a specific endpoint, drop down to `Http.SendAsync(...)` with your own request, or rebuild `HttpApi` with custom options via `new HttpApi(client, logger, customOptions)`.
 
 ## Dependencies
 
 | Layer | Package | Version |
 | --- | --- | --- |
-| .NET client | `DeepSigma.DataAccess.Http` | 1.3.0 |
+| .NET client | `DeepSigma.DataAccess.Http` | 1.4.0 |
 | .NET client | `Microsoft.Extensions.Options.ConfigurationExtensions` | 10.0.0 |
 | Demo | `Microsoft.Extensions.Hosting` | 10.0.0 |
 | AppHost | `Aspire.AppHost.Sdk` / `Aspire.Hosting.AppHost` / `Aspire.Hosting.Python` | 13.4.6 |
 | Python framework | `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings` | see `pyproject.toml` |
 | Python ML example | `scikit-learn`, `numpy` | optional `[examples]` extra |
+| Python tests | `pytest`, `httpx2` | optional `[dev]` extra |
 
 ## License
 

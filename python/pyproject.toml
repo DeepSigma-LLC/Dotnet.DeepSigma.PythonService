@@ -19,9 +19,16 @@ examples = [
     "scikit-learn>=1.5",
     "numpy>=2.0",
 ]
+dev = [
+    "pytest>=8.0",
+    "httpx2>=0.28",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

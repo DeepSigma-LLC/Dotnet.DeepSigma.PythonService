@@ -15,3 +15,6 @@ __pycache__/
 
 # Aspire
 **/aspire-dashboard-logs/
+
+# Local NuGet feed (developer-only; not for committed code)
+local-nuget/
