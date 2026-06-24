@@ -6,7 +6,22 @@ build-backend = "setuptools.build_meta"
 name = "deepsigma-pyservice"
 version = "0.1.0"
 description = "Reusable FastAPI framework for exposing Python functions to .NET callers."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "DeepSigma LLC" }]
 requires-python = ">=3.11"
+keywords = ["fastapi", "uvicorn", "ml", "inference", "dotnet", "aspire"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -22,7 +37,14 @@ examples = [
 dev = [
     "pytest>=8.0",
     "httpx2>=0.28",
+    "build>=1.2",
+    "twine>=5.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/DeepSigma-LLC/Dotnet.DeepSigma.PythonService"
+Repository = "https://github.com/DeepSigma-LLC/Dotnet.DeepSigma.PythonService"
+Issues = "https://github.com/DeepSigma-LLC/Dotnet.DeepSigma.PythonService/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

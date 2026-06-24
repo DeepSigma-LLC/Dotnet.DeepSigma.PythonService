@@ -58,16 +58,17 @@ The framework layers (`deepsigma_pyservice/` on Python, `DeepSigma.PythonService
 - **Snake_case JSON is automatic.** The library wires `HttpApi.SnakeCaseJsonOptions` so PascalCase C# property names round-trip to/from Python's snake_case fields with no `[JsonPropertyName]` attributes on DTOs.
 - **Aspire** lives only in the AppHost project. The reusable client library has zero Aspire references, so consumers can host the Python server however they want.
 
-## Getting started
+## Setup — pick a path
 
-### Prerequisites
+Two ways to consume this project, depending on whether you're starting fresh or want the full scaffold.
 
-- .NET 10 SDK
-- Python 3.11+
-- Visual Studio with the "Python development" workload (only required for editing `.pyproj` in Solution Explorer)
-- Aspire dashboard runs automatically when you launch the AppHost; no separate install needed
+### Path A — Use this repo as a template
 
-### One-time Python setup
+Clone the repo, or click **Use this template** on GitHub. You get the full scaffold: framework, sample implementations (echo + iris), AppHost wiring, tests, Dockerfile. Edit `python/implementations/` and `python/server.py` for your endpoints; the framework in `python/src/deepsigma_pyservice/` is updated in-tree.
+
+Prerequisites: .NET 10 SDK, Python 3.11+, Visual Studio with the "Python development" workload (only required for editing `.pyproj` in Solution Explorer).
+
+One-time Python setup:
 
 ```powershell
 cd python
@@ -77,15 +78,16 @@ python -m venv .venv
 
 The `.venv/` folder is gitignored. Aspire auto-detects this venv when starting the FastAPI process.
 
-### F5 from Visual Studio (recommended)
+#### F5 from Visual Studio (recommended)
 
 1. Open `DeepSigma.PythonService\DeepSigma.PythonService.slnx`.
 2. Set **DeepSigma.PythonService.AppHost** as the startup project.
-3. Press F5.
+3. Pick the **http** launch profile from the dropdown next to the green play button (the `https` profile requires a trusted dev cert; the `http` profile sets `ASPIRE_ALLOW_UNSECURED_TRANSPORT=true`).
+4. Press F5.
 
-The Aspire dashboard opens with two resources: `python-api` (uvicorn + FastAPI) and `demo` (the .NET console app). The demo logs `[health]`, `[echo]`, and `[iris]` results to its console pane.
+The Aspire dashboard opens with two resources: `python-api` (uvicorn + FastAPI) and `demo` (the .NET console app). The demo's output (`[health]`, `[echo]`, `[iris]`) appears in the dashboard's **demo** resource log.
 
-### Running pieces individually
+#### Running pieces individually
 
 ```powershell
 # Python only
@@ -97,7 +99,7 @@ $env:PythonService__BaseUrl = "http://127.0.0.1:8000"
 dotnet run --project DeepSigma.PythonService.Demo
 
 # Aspire (CLI)
-dotnet run --project DeepSigma.PythonService.AppHost
+dotnet run --project DeepSigma.PythonService.AppHost --launch-profile http
 
 # Python tests
 cd python
@@ -106,6 +108,31 @@ cd python
 # .NET tests
 dotnet test DeepSigma.PythonService.Test
 ```
+
+### Path B — Depend on the published packages
+
+For a brand-new project not derived from this repo, install both packages and write your own glue:
+
+```powershell
+# Python side
+pip install deepsigma-pyservice
+
+# .NET side
+dotnet add package DeepSigma.PythonService.Client
+```
+
+Minimal `server.py`:
+
+```python
+from deepsigma_pyservice import create_app
+from my_app.endpoints import router
+
+app = create_app(routers=[router])
+```
+
+Run with `uvicorn server:app --host 0.0.0.0 --port 8000`. The .NET client (`DeepSigma.PythonService.Client`) connects to it identically — see [Using the client library in your own app](#using-the-client-library-in-your-own-app) below.
+
+Path B skips the in-repo AppHost / Demo / Dockerfile / tests — you bring your own. Path A is the faster start; Path B is the cleaner long-term integration into an existing codebase.
 
 ## Adding a new endpoint
 
@@ -216,6 +243,60 @@ pyBuilder.AddClient<MyClient>();
 Pydantic uses `snake_case` field names by default; `System.Text.Json` uses `PascalCase`. The library wires `HttpApi.SnakeCaseJsonOptions` (from `DeepSigma.DataAccess.Http` v1.4.0+) so PascalCase C# properties serialize as snake_case on the wire and are read case-insensitively — no `[JsonPropertyName]` attributes required on DTOs.
 
 If you need a different policy for a specific endpoint, drop down to `Http.SendAsync(...)` with your own request, or rebuild `HttpApi` with custom options via `new HttpApi(client, logger, customOptions)`.
+
+## Deployment
+
+A FastAPI service is just an ASGI process — there's no single "right" deployment. The most portable artifact is the included Dockerfile, which works on any container host (Azure Container Apps, AWS ECS / Fargate, Cloud Run, Kubernetes, bare Docker on a VM).
+
+### Docker (recommended)
+
+```powershell
+cd python
+docker build -t deepsigma-pyservice .
+docker run -p 8000:8000 deepsigma-pyservice
+```
+
+The image is multi-stage (builder + runtime), runs as a non-root user, and exposes port 8000. The in-repo `server.py` + `implementations/` are baked in — edit those before building, or template a new Dockerfile that copies your own `server.py` if you took Path B.
+
+### Bare uvicorn (VM / systemd)
+
+Install deps in a venv, then run uvicorn behind a reverse proxy (nginx / caddy):
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+For a long-running deployment, wrap that command in a systemd unit (Linux) or a Windows Service.
+
+Configure via env vars (all read by `AppSettings` in [`python/src/deepsigma_pyservice/settings.py`](python/src/deepsigma_pyservice/settings.py)):
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `PYSERVICE_HOST` | `127.0.0.1` | Bind address |
+| `PYSERVICE_PORT` | `8000` | Bind port |
+| `PYSERVICE_LOG_LEVEL` | `info` | `debug` / `info` / `warning` / `error` |
+| `PYSERVICE_CORS_ORIGINS` | `[]` | JSON list, e.g. `'["https://app.example.com"]'` |
+| `PYSERVICE_TITLE` | `DeepSigma Python Service` | FastAPI OpenAPI title |
+| `PYSERVICE_SERVICE_NAME` | `deepsigma-pyservice` | Identifier returned by `/health` |
+
+### Aspire (local dev only)
+
+The AppHost orchestrates uvicorn + .NET demo together for local development. **Don't use Aspire for production deployment** — Aspire's resource lifecycle is built around the developer F5 loop. Ship the Python side via Docker (or bare uvicorn) and host the .NET side independently.
+
+## Publishing the framework
+
+When you're ready to ship a new version of `deepsigma-pyservice`:
+
+```powershell
+cd python
+# bump version in pyproject.toml first
+.venv\Scripts\python.exe -m build              # produces dist/*.whl and dist/*.tar.gz
+.venv\Scripts\python.exe -m twine upload dist/*   # to the feed configured in ~/.pypirc
+```
+
+Configure the target feed via `~/.pypirc` or `twine upload --repository <name>` — works for public PyPI, private PyPI servers (devpi, Gemfury, Azure Artifacts), or GitHub Releases. Both `build` and `twine` ship in the `[dev]` extra.
+
+A CI workflow (GitHub Actions on tag push) is a natural follow-up but isn't wired up yet.
 
 ## Dependencies
 
