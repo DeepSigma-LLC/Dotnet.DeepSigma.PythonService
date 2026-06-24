@@ -6,8 +6,8 @@ var pythonApi = builder.AddUvicornApp(
         name: PythonApiResource.Name,
         appDirectory: "../python",
         app: "server:app")
-    .WithHttpHealthCheck("/health")
-    .WithExternalHttpEndpoints();
+    .WithHttpEndpoint(env: "PORT")
+    .WithHttpHealthCheck("/health");
 
 builder.AddProject<Projects.DeepSigma_PythonService_Demo>("demo")
     .WithReference(pythonApi)
